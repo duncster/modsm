@@ -2,6 +2,7 @@ CC		:= gcc
 LD		:= gcc
 CCFLG	:=
 LDFLG	:=
+#CCFLG	+= -D_DEBUG
 
 all:  modsm
 

@@ -24,20 +24,66 @@ as published by Sam Hocevar:
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
+#include <pwd.h>
+#include <grp.h>
+#include <sys/shm.h>
 
+int modsm(int id, uid_t uid, gid_t gid, int mode)
+{
+	struct shmid_ds shm;
+
+#ifdef _DEBUG
+	printf("\n");
+	printf("id:   %d\n", id);
+	printf("uid:  %d\n", uid);
+	printf("gid:  %d\n", gid);
+	printf("mode: %.3o\n", mode);
+#endif
+
+	if(shmctl(id, IPC_STAT, &shm) == -1)
+	{
+		fprintf(stderr, "shmctl stat error\n");
+		return -1;
+	}
+
+	if(uid != -1)
+	{
+		shm.shm_perm.uid = uid;
+	}
+
+	if(gid != -1)
+	{
+		shm.shm_perm.gid = gid;
+	}
+
+	if(mode != -1)
+	{
+		shm.shm_perm.mode = mode;
+	}
+
+	if(shmctl(id, IPC_SET, &shm) == -1)
+	{
+		fprintf(stderr, "shmctl set error\n");
+		return -1;
+	}
+
+	return 1;
+}
 
 void usage(char *name)
 {
-	fprintf(stderr, "Usage: %s <key(s)> -u <user> -g <group> -m <mode>\n", name);
+	fprintf(stderr, "Usage: %s <shmid(s)> -u <user> -g <group> -m <mode>\n", name);
 }
 
 int main(int argc, char **argv)
 {
 	int c, i;
-	char *key = NULL;
-	char *uid = NULL;
-	char *gid = NULL;
+	char *id = NULL;
+	char *username = NULL;
+	char *group = NULL;
 	char *mode = NULL;
+	struct passwd *pass;
+	struct group *grp;
 
 	if(argc < 2)
 	{
@@ -50,39 +96,66 @@ int main(int argc, char **argv)
 		switch(c)
 		{
 			case 'u':
-				uid = malloc(strlen(optarg));
-				strcpy(uid, optarg);
+				username = malloc(strlen(optarg));
+				strcpy(username, optarg);
 				break;
 			
 			case 'g':
-				gid = malloc(strlen(optarg));
-				strcpy(gid, optarg);
+				group = malloc(strlen(optarg));
+				strcpy(group, optarg);
 				break;
+
 			case 'm':
 				mode = malloc(strlen(optarg));
 				strcpy(mode, optarg);
 				break;
+
 			case 'h':
 				usage(argv[0]);
 				return EXIT_SUCCESS;
 				break;
+
 			default:
 				break;				
 		}
 	}
 
-	printf("uid:  %s\n", uid);
-	printf("gid:  %s\n", gid);
-	printf("mode: %s\n", mode);
+	if(username)
+		pass = getpwnam(username);
+
+	if(group)
+		grp = getgrnam(group);
+
+#ifdef _DEBUG
+	if(username)
+		printf("user:  %s, uid: %d\n", username, pass->pw_uid);
+	if(group)
+		printf("group:  %s, gid: %d\n", group, grp->gr_gid);
+	if(mode)
+		printf("mode: %s, %.3o\n", mode, strtoul(mode, NULL, 8));
+#endif
 
 	for(i=optind; i<argc; i++)
-		printf("key: %s\n", argv[i]);	
+	{
+#ifdef _DEBUG
+		printf("shmid: %s\n", argv[i]);	
+#endif
+		if(modsm((int)strtoul(argv[i], NULL, 10), 
+			username ? pass->pw_uid : -1, 
+			group ? grp->gr_gid : -1, 
+			mode ? (int)strtoul(mode, NULL, 8) : -1) == -1)
+		{
+			fprintf(stderr, "setting id: %s, uid: %s, gid: %s, mode: %s failed\n",
+				argv[i], username, group, mode);
+				return EXIT_FAILURE;
+		}
+	}
 
-	if(uid)
-		free(uid);
+	if(username)
+		free(username);
 
-	if(gid)
-		free(gid);
+	if(group)
+		free(group);
 
 	if(mode)
 		free(mode);
